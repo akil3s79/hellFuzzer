@@ -76,3 +76,11 @@ Only use hellFuzzer on systems you own or have explicit permission to test.
 
 Contributing
 Found a bug? Have a feature request? Feel free to open an issue or pull request!
+
+-------------------------------------------------------------------------
+
+Puedes invitarme a un café si quieres!
+<a href="https://www.buymeacoffee.com/akil3s1979" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="27" width="104"></a>
+
+You can buy me a coffe if you want!
+<a href="https://www.buymeacoffee.com/akil3s1979" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="27" width="104"></a>
