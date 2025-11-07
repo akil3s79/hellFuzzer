@@ -10,6 +10,7 @@ import threading
 import time
 import os
 import queue
+import re
 from datetime import datetime
 from argparse import ArgumentParser
 from urllib3.exceptions import InsecureRequestWarning
@@ -33,17 +34,67 @@ class Colors:
     BLUE = '\033[94m' if USE_COLORS else ''
     CYAN = '\033[96m' if USE_COLORS else ''
     MAGENTA = '\033[95m' if USE_COLORS else ''
+    ORANGE = '\033[33m' if USE_COLORS else ''
     END = '\033[0m' if USE_COLORS else ''
+
+# Patrones de contenido interesante
+INTERESTING_PATTERNS = {
+    'backup': [
+        r'backup', r'back_up', r'bak', r'\.bak$', r'\.old$', r'\.save$',
+        r'backup\.zip', r'backup\.tar', r'backup\.sql', r'database\.bak'
+    ],
+    'config': [
+        r'config', r'configuration', r'\.env', r'env\.', r'settings', 
+        r'configuration', r'config\.php', r'config\.json', r'config\.xml',
+        r'web\.config', r'\.htaccess', r'htpasswd'
+    ],
+    'admin': [
+        r'admin', r'administrator', r'dashboard', r'panel', r'control',
+        r'manager', r'login', r'log_in', r'signin', r'root', r'superuser'
+    ],
+    'credentials': [
+        r'password', r'credential', r'secret', r'key', r'token', 
+        r'passwd', r'pwd', r'id_rsa', r'id_dsa', r'\.pem$',
+        r'oauth', r'jwt', r'api[_-]?key'
+    ],
+    'database': [
+        r'database', r'db', r'mysql', r'postgres', r'sqlite',
+        r'\.sql$', r'dump', r'schema', r'migration'
+    ],
+    'log': [
+        r'log', r'debug', r'error', r'trace', r'audit',
+        r'\.log$', r'logging', r'history'
+    ],
+    'git': [
+        r'\.git', r'gitignore', r'gitkeep', r'gitlab'
+    ]
+}
 
 def show_banner():
     """Muestra el banner del tool"""
     print(f"""{Colors.MAGENTA}
     ╔══════════════════════════════════════════════════╗
-    ║                    hellFuzzer                    ║
-    ║               Web Directory Fuzzer               ║
-    ║                   HTTP method: GET               ║
+    ║                    hellFuzzer                   ║
+    ║               Web Directory Fuzzer              ║
+    ║                   HTTP method: GET              ║
     ╚══════════════════════════════════════════════════╝{Colors.END}
     """)
+
+def is_interesting_path(path):
+    """
+    Detecta si una ruta es interesante basado en patrones
+    Returns: (es_interesante, categoria, confianza)
+    """
+    path_lower = path.lower()
+    
+    for category, patterns in INTERESTING_PATTERNS.items():
+        for pattern in patterns:
+            if re.search(pattern, path_lower, re.IGNORECASE):
+                # Calcular confianza basada en lo específico del patrón
+                confidence = "HIGH" if pattern.startswith(r'\.') or '\.' in pattern else "MEDIUM"
+                return True, category.upper(), confidence
+    
+    return False, None, None
 
 def validate_url(url):
     """
@@ -133,13 +184,27 @@ def check_endpoint(target_url, word, session, timeout=2, ignore_codes=None):
         if status in ignore_codes:
             return
         
+        # Verificar si es interesante
+        is_interesting, category, confidence = is_interesting_path(word)
+        
         # Formatear la salida como dirsearch
         timestamp = format_time()
         size = format_size(len(response.content))
         path = f"/{word}"
         
         with print_lock:
-            if status == 200:
+            # COLORES ESPECIALES PARA CONTENIDO INTERESANTE
+            if is_interesting:
+                if confidence == "HIGH":
+                    color = Colors.ORANGE
+                    marker = "🔥"
+                else:
+                    color = Colors.YELLOW  
+                    marker = "⚡"
+                
+                print(f"{timestamp} {Colors.GREEN if status == 200 else Colors.BLUE}{status}{Colors.END} - {size:>6} - {path} {color}{marker} [{category}]{Colors.END}")
+            
+            elif status == 200:
                 print(f"{timestamp} {Colors.GREEN}200{Colors.END} - {size:>6} - {path}")
             elif status == 403:
                 print(f"{timestamp} {Colors.YELLOW}403{Colors.END} - {size:>6} - {path}")
@@ -224,6 +289,8 @@ def main():
                        help='File extensions to try (e.g., php html txt)')
     parser.add_argument('--ignore-status', type=int, nargs='+', default=[],
                        help='Status codes to ignore (e.g., 403 404)')
+    parser.add_argument('--show-interesting', action='store_true', default=True,
+                       help='Highlight interesting findings (enabled by default)')
     
     args = parser.parse_args()
     
@@ -262,12 +329,12 @@ def main():
     if args.ignore_status:
         print(f"{Colors.CYAN}[*] Ignoring status: {', '.join(map(str, args.ignore_status))}{Colors.END}")
     
+    print(f"{Colors.CYAN}[*] Interesting content detection: ENABLED{Colors.END}")
     print(f"{Colors.CYAN}[*] Total requests: {len(all_targets)}{Colors.END}")
     print(f"{Colors.CYAN}[*] Starting...{Colors.END}")
     print("-" * 60)
     
     start_time = time.time()
-    requests_completed = 0
     
     try:
         # Crear cola y añadir TODOS los targets individuales
