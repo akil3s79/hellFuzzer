@@ -33,13 +33,36 @@ While there are great fuzzers out there, I wanted something that:
 
 ## Installation
 
-```bash
 git clone https://github.com/rogaramo/hellfuzzer.git
 cd hellfuzzer
 pip3 install -r requirements.txt
 
-Puedes invitarme a un café si quieres!
+
+## Usage Examples
+- **Basic Scan: python3 hellFuzzer.py http://target.com common.txt** - 
+- **Authenticated Scan with Cookies: python3 hellFuzzer.py https://webapp.com admin_paths.txt -c "sessionid=abc123; csrftoken=xyz"** - 
+- **High-Speed Scan: python3 hellFuzzer.py http://192.168.1.100 big_wordlist.txt -t 30** - 
+- **SSL validation: python3 hellFuzzer.py https://company.com common.txt --ssl-verify** - 
+
+## Wordlists
+hellFuzzer works with any standard wordlist format. Some recommended wordlists:
+- **dirb/common.txt** - 
+- **dirbuster/directory-list-*.txt** - 
+- **SecLists/Discovery/Web-Content/** - 
+
+## Legal Notice
+This tool is intended for:
+- **Authorized penetration testing** - 
+- **Security research** - 
+- **Educational purposes** - 
+
+## Only use hellFuzzer on systems you own or have explicit permission to test.
+
+## Contributing
+Found a bug? Have a feature request? Feel free to open an issue or pull request!
+
+## Puedes invitarme a un café si quieres!
 <a href="https://www.buymeacoffee.com/akil3s1979" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="27" width="104"></a>
 
-You can buy me a coffe if you want!
+## You can buy me a coffe if you want!
 <a href="https://www.buymeacoffee.com/akil3s1979" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="27" width="104"></a>
