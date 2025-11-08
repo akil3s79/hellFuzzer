@@ -33,7 +33,7 @@ While there are great fuzzers out there, I wanted something that:
 
 ## Installation
 
-git clone https://github.com/rogaramo/hellfuzzer.git
+git clone https://github.com/akil3s79/hellFuzzer.git
 cd hellfuzzer
 pip3 install -r requirements.txt
 
