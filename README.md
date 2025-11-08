@@ -25,7 +25,7 @@ While there are great fuzzers out there, I wanted something that:
 - **🔍 Confidence-based highlighting** - Visual indicators (🔥/⚡) for high/medium confidence findings
 - **🔐 Session support** - Test authenticated areas with cookies
 - **🎯 Response filtering** - Ignore status codes (403, 404, etc.) to reduce noise
-- **📁 Extension support** - Automatically try multiple file extensions (php, html, txt)
+- **📁 Extension support** - Automatically try multiple file extensions (php, html, txt, asp, jsp, etc.)
 - **🔒 SSL flexibility** - Work with both HTTP and HTTPS, with optional certificate verification
 - **⏱️ Customizable timeouts** - Adapt to slow networks or applications
 - **📊 Real-time progress** - Live progress bar with requests/second metrics
@@ -39,16 +39,48 @@ pip3 install -r requirements.txt
 
 
 ## Usage Examples
-- **Basic Scan: python3 hellFuzzer.py http://target.com common.txt** - 
-- **Authenticated Scan with Cookies: python3 hellFuzzer.py https://webapp.com admin_paths.txt -c "sessionid=abc123; csrftoken=xyz"** - 
+- **Basic Scan: python3 hellFuzzer.py http://target.com common.txt** -
+- **High-Speed Scan with Multiple Threads: python3 hellFuzzer.py https://webapp.com wordlist.txt -t 50** -
+- **Authenticated Scan with Cookies: python3 hellFuzzer.py https://webapp.com admin_paths.txt -c "sessionid=abc123; csrftoken=xyz"** -
+- **Scan with File Extensions: python3 hellFuzzer.py http://target.com common.txt -x php html txt** -
 - **High-Speed Scan: python3 hellFuzzer.py http://192.168.1.100 big_wordlist.txt -t 30** - 
-- **SSL validation: python3 hellFuzzer.py https://company.com common.txt --ssl-verify** - 
+- **SSL validation: python3 hellFuzzer.py https://company.com common.txt --ssl-verify** -
+- **Ignore Specific Status Codes: python3 hellFuzzer.py http://target.com wordlist.txt --ignore-status 403 404** -
+-  **Slow Network Target: python3 hellFuzzer.py http://slow.server common.txt --timeout 10** -
+-  **Complete Example: python3 hellFuzzer.py https://testapp.com raft-medium-words.txt -t 30 -x php html --ignore-status 403 --timeout 3**-
+
+## Intelligent Content Detection: 
+hellFuzzer automatically detects and highlights interesting content:
+- **[16:43:16] 200 -  377B  - /images/** -
+- **[16:43:17] 200 -  1.2KB - /config.php 🔥 [CONFIG]** -
+- **[16:43:18] 301 -  245B  - /admin -> /login.php ⚡ [ADMIN]** -
+- **[16:43:19] 200 -  45KB  - /backup.zip 🔥 [BACKUP]** -
+- **[16:43:20] 403 -  1.1KB - /.env 🔥 [CONFIG]** -
+
+## Makers:
+- **🔥 - High confidence (specific patterns like .env, .bak, config.php)** -
+- **⚡ - Medium confidence (generic patterns like admin, backup, password)** -
+
+Categories: BACKUP, CONFIG, ADMIN, CREDENTIALS, DATABASE, LOG, GIT
+
+## Output Format:
+hellFuzzer uses a clean, professional output format:
+- **[16:43:16] 200 - 377B - /images/** -
+- **[16:43:17] 301 - 245B - /admin -> /login.php** -
+- **[16:43:18] 403 - 1.2KB - /backup/** -
 
 ## Wordlists
 hellFuzzer works with any standard wordlist format. Some recommended wordlists:
 - **dirb/common.txt** - 
 - **dirbuster/directory-list-*.txt** - 
 - **SecLists/Discovery/Web-Content/** - 
+
+## Performance Tips:
+- **Use 20-50 threads for optimal performance on most targets** -
+- **Set timeout to 2-3 seconds for internal networks, 5-8 for external** -
+- **Ignore 403/404 status codes to reduce output noise** -
+- **Use targeted wordlists rather than huge generic ones** -
+- **Enable SSL verification only when testing production environments** -
 
 ## Legal Notice
 This tool is intended for:
