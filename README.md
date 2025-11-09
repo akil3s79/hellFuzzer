@@ -1,4 +1,4 @@
-# hellFuzzer 🔥
+# hellFuzzer
 
 A high-performance web directory and file fuzzer designed for penetration testers and security researchers.
 
@@ -20,16 +20,16 @@ While there are great fuzzers out there, I wanted something that:
 
 ## Key Features
 
-- **⚡ Multi-threaded performance** - Scan thousands of paths in seconds, not minutes (150+ req/sec)
-- **🎯 Smart content detection** - Automatically flags interesting findings (configs, backups, admin panels, credentials)
-- **🔍 Confidence-based highlighting** - Visual indicators (🔥/⚡) for high/medium confidence findings
-- **🔐 Session support** - Test authenticated areas with cookies
-- **🎯 Response filtering** - Ignore status codes (403, 404, etc.) to reduce noise
-- **📁 Extension support** - Automatically try multiple file extensions (php, html, txt, asp, jsp, etc.)
-- **🔒 SSL flexibility** - Work with both HTTP and HTTPS, with optional certificate verification
-- **⏱️ Customizable timeouts** - Adapt to slow networks or applications
-- **📊 Real-time progress** - Live progress bar with requests/second metrics
-- **🎨 Professional output** - Clean, color-coded results with timestamps and formatted sizes
+- **Multi-threaded performance** - Scan thousands of paths in seconds, not minutes (150+ req/sec)
+- **Smart content detection** - Automatically flags interesting findings (configs, backups, admin panels, credentials)
+- **Confidence-based highlighting** - Visual indicators (🔥/⚡) for high/medium confidence findings
+- **Session support** - Test authenticated areas with cookies
+- **Response filtering** - Ignore status codes (403, 404, etc.) to reduce noise
+- **Extension support** - Automatically try multiple file extensions (php, html, txt, asp, jsp, etc.)
+- **SSL flexibility** - Work with both HTTP and HTTPS, with optional certificate verification
+- **Customizable timeouts** - Adapt to slow networks or applications
+- **Real-time progress** - Live progress bar with requests/second metrics
+- **Professional output** - Clean, color-coded results with timestamps and formatted sizes
 
 ## Installation
 
