@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 hellFuzzer - Directory and file fuzzer for web pentesting  
-Author: rogaramo (Rober)
+Author: akil3s (Rober)
 """
 
 import requests
@@ -11,6 +11,7 @@ import time
 import os
 import queue
 import re
+import json
 from datetime import datetime
 from argparse import ArgumentParser
 from urllib3.exceptions import InsecureRequestWarning
@@ -36,6 +37,162 @@ class Colors:
     MAGENTA = '\033[95m' if USE_COLORS else ''
     ORANGE = '\033[33m' if USE_COLORS else ''
     END = '\033[0m' if USE_COLORS else ''
+class AuthManager:
+    """Gestor de autenticaciones para hellFuzzer"""
+    
+    def __init__(self, args):
+        self.auth_config = self._parse_auth_args(args)
+        self.session = requests.Session()
+        self._setup_authentication()
+    
+    def _parse_auth_args(self, args):
+        """Convierte argumentos en configuración de auth"""
+        config = {}
+        
+        if args.auth_basic:
+            config['type'] = 'basic'
+            config['credentials'] = args.auth_basic
+        elif args.auth_jwt:
+            config['type'] = 'jwt' 
+            config['token'] = args.auth_jwt
+        elif args.auth_oauth2:
+            config['type'] = 'oauth2'
+            config['token'] = args.auth_oauth2
+        elif args.auth_header:
+            config['type'] = 'custom'
+            config['header'] = args.auth_header
+            
+        return config
+    
+    def _setup_authentication(self):
+        """Configura la sesión con la autenticación seleccionada"""
+        if not self.auth_config:
+            return
+            
+        auth_type = self.auth_config.get('type')
+        
+        if auth_type == 'basic':
+            user, pwd = self.auth_config['credentials'].split(':', 1)
+            self.session.auth = (user, pwd)
+            print(f"{Colors.CYAN}[AUTH] Basic Auth configurada para usuario: {user}{Colors.END}")
+            
+        elif auth_type in ['jwt', 'oauth2']:
+            token = self.auth_config['token']
+            self.session.headers.update({'Authorization': f'Bearer {token}'})
+            print(f"{Colors.CYAN}[AUTH] {auth_type.upper()} Bearer Token configurado{Colors.END}")
+            
+        elif auth_type == 'custom':
+            header_parts = self.auth_config['header'].split(':', 1)
+            if len(header_parts) == 2:
+                key, value = header_parts
+                self.session.headers.update({key.strip(): value.strip()})
+                print(f"{Colors.CYAN}[AUTH] Header personalizado: {key}{Colors.END}")
+    
+    def get_session(self):
+        """Devuelve la sesión autenticada"""
+        return self.session
+    
+    def test_auth(self, test_url, timeout=5):
+        """Prueba si la autenticación funciona"""
+        try:
+            response = self.session.get(test_url, timeout=timeout, verify=False)
+            if response.status_code == 401:
+                return False, f"{Colors.RED}❌ Autenticación FALLIDA - Sigue devolviendo 401{Colors.END}"
+            return True, f"{Colors.GREEN}✅ Autenticación EXITOSA - Sesión establecida{Colors.END}"
+        except Exception as e:
+            return False, f"{Colors.YELLOW}⚠️ Error probando auth: {e}{Colors.END}"
+
+class RecursionManager:
+    """Gestor de recursividad para descubrir contenido oculto"""
+    
+    def __init__(self, max_depth=0):
+        self.max_depth = max_depth
+        self.visited_urls = set()
+        self.lock = threading.Lock()
+    
+    def should_process(self, url, current_depth):
+        """Decide si procesar una URL basado en profundidad y visitados - MEJORADO"""
+        if current_depth > self.max_depth:
+            return False
+        
+        # Normalizar URL para evitar duplicados
+        normalized_url = url.lower().split('?')[0]  # Ignorar query parameters
+        normalized_url = normalized_url.rstrip('/')
+        
+        with self.lock:
+            if normalized_url in self.visited_urls:
+                return False
+            self.visited_urls.add(normalized_url)
+        
+        return True
+    
+def extract_links_from_html(self, html_content, base_url):
+    """Extrae links de HTML para añadir a la cola - MEJORADO"""
+    links = set()
+    
+    # Patrones mejorados para encontrar URLs
+    patterns = [
+        r'href=[\'"]([^\'"]*?)[\'"]',
+        r'src=[\'"]([^\'"]*?)[\'"]',  
+        r'action=[\'"]([^\'"]*?)[\'"]',
+        r'url\([\'"]?([^\'")]*)[\'"]?\)'
+    ]
+    
+    # Extensiones que NO queremos seguir (archivos estáticos, etc.)
+    skip_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.css', '.js', 
+                      '.ico', '.svg', '.woff', '.ttf', '.pdf', '.zip']
+    
+    for pattern in patterns:
+        found_links = re.findall(pattern, html_content, re.IGNORECASE)
+        for link in found_links:
+            # Saltar enlaces no interesantes
+            if any(link.endswith(ext) for ext in skip_extensions):
+                continue
+            if link.startswith(('javascript:', 'mailto:', 'tel:', '#', '//')):
+                continue
+                
+            # Normalizar URL
+            if link.startswith(('http://', 'https://')):
+                if base_url in link:
+                    links.add(link)
+            elif link.startswith('/'):
+                links.add(f"{base_url.rstrip('/')}{link}")
+            elif not link.startswith(('#', 'javascript:', 'mailto:')):
+                links.add(f"{base_url.rstrip('/')}/{link}")
+    
+    return links
+    
+def process_discovered_links(self, new_links, target_queue, current_depth):
+        """Añade links descubiertos a la cola para procesar"""
+        added_count = 0
+        for link in new_links:
+            # Extraer solo la parte del path de la URL completa
+            if link.startswith(('http://', 'https://')):
+                # Si es URL completa, extraer el path
+                from urllib.parse import urlparse
+                parsed = urlparse(link)
+                path = parsed.path
+            else:
+                path = link
+            
+            # Quitar la barra inicial si existe
+            if path.startswith('/'):
+                path = path[1:]
+            
+            if path and self.should_process(path, current_depth + 1):
+                target_queue.put(RecursiveLink(path, current_depth + 1))
+                added_count += 1
+        
+        return added_count
+
+class RecursiveLink:
+    """Representa un link descubierto durante la recursividad"""
+    def __init__(self, path, depth):
+        self.path = path
+        self.depth = depth
+    
+    def __str__(self):
+        return self.path
 
 # Patrones de contenido interesante
 INTERESTING_PATTERNS = {
@@ -74,9 +231,9 @@ def show_banner():
     """Muestra el banner del tool"""
     print(f"""{Colors.MAGENTA}
     ╔══════════════════════════════════════════════════╗
-    ║                    hellFuzzer                   ║
-    ║               Web Directory Fuzzer              ║
-    ║                   HTTP method: GET              ║
+    ║                    hellFuzzer                    ║
+    ║               Web Directory Fuzzer               ║
+    ║                   HTTP method: GET               ║
     ╚══════════════════════════════════════════════════╝{Colors.END}
     """)
 
@@ -91,7 +248,7 @@ def is_interesting_path(path):
         for pattern in patterns:
             if re.search(pattern, path_lower, re.IGNORECASE):
                 # Calcular confianza basada en lo específico del patrón
-                confidence = "HIGH" if pattern.startswith(r'\.') or '\.' in pattern else "MEDIUM"
+                confidence = "HIGH" if pattern.startswith(r'\.') or r'\.' in pattern else "MEDIUM"
                 return True, category.upper(), confidence
     
     return False, None, None
@@ -167,7 +324,10 @@ def format_time():
     """Devuelve la hora actual en formato [HH:MM:SS]"""
     return datetime.now().strftime("[%H:%M:%S]")
 
-def check_endpoint(target_url, word, session, timeout=2, ignore_codes=None):
+def check_endpoint(target_url, word, session, timeout=2, ignore_codes=None, 
+                   recursion_manager=None, current_depth=0, target_queue=None, 
+                   stats=None, pwndoc_findings=None): 
+    
     """
     Comprueba un endpoint y muestra resultado si es interesante
     """
@@ -214,7 +374,47 @@ def check_endpoint(target_url, word, session, timeout=2, ignore_codes=None):
                 print(f"{timestamp} {Colors.CYAN}401{Colors.END} - {size:>6} - {path}")
             else:
                 print(f"{timestamp} {status} - {size:>6} - {path}")
+        # ACTUALIZAR ESTADÍSTICAS
+        if stats:
+            stats['total_requests'] += 1
+            stats['status_codes'][status] = stats['status_codes'].get(status, 0) + 1
             
+            if is_interesting:
+                stats['interesting_finds'][category] = stats['interesting_finds'].get(category, 0) + 1
+        # PROCESAR RECURSIVIDAD SI ESTÁ ACTIVA
+        if recursion_manager and recursion_manager.max_depth > 0:
+            if status in [200, 301, 302] and 'text/html' in response.headers.get('content-type', ''):
+                # Extraer links del HTML
+                new_links = recursion_manager.extract_links_from_html(response.text, target_url)
+        
+                if new_links and target_queue:
+                    # Añadir links a la cola
+                    added_count = recursion_manager.process_discovered_links(
+                        new_links, target_queue, current_depth
+                    )
+                    if added_count > 0:
+                        print(f"{Colors.CYAN}[RECURSION] Depth {current_depth+1}: Added {added_count} paths from {word}{Colors.END}")
+
+        # NUEVO: GUARDAR PARA JSON PWDOC 
+        if pwndoc_findings is not None and status not in ignore_codes:
+            
+            finding = {
+                'url': f"{target_url.rstrip('/')}/{word}",
+                'path': f"/{word}",
+                'status': status,
+                'size': len(response.content),
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            # Añadir categoría si es interesante
+            if is_interesting:
+                finding['category'] = category
+                finding['confidence'] = confidence
+                finding['marker'] = "🔥" if confidence == "HIGH" else "⚡"
+            
+            # Añadir a la lista de hallazgos
+            pwndoc_findings['findings'].append(finding)
+
     except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, requests.exceptions.TooManyRedirects):
         # Silenciar errores comunes
         pass
@@ -222,47 +422,96 @@ def check_endpoint(target_url, word, session, timeout=2, ignore_codes=None):
         # Silenciar otros errores
         pass
 
-def create_session(verify_ssl=False, retries=1):
-    """
-    Crea una sesión HTTP con configuración optimizada para fuzzing
-    """
-    session = requests.Session()
+def export_pwndoc_json(pwndoc_findings, output_file=None):
+    """Exporta resultados en formato Pwndoc JSON"""  
+    # Formatear para Pwndoc
+    pwndoc_output = {
+        'name': f"hellFuzzer Scan - {pwndoc_findings['scan_info']['target']}",
+        'scope': [pwndoc_findings['scan_info']['target']],
+        'createdAt': datetime.now().isoformat(),
+        'startDate': pwndoc_findings['scan_info']['timestamp'],
+        'endDate': datetime.now().isoformat(),
+        'findings': []
+    }
     
-    # Configurar retries
-    retry_strategy = Retry(
-        total=retries,
-        backoff_factor=0.1,
-        status_forcelist=[429, 500, 502, 503, 504],
-    )
+    # Convertir hallazgos a formato Pwndoc
+    for finding in pwndoc_findings['findings']:
+        # Determinar severidad basada en categoría y status
+        severity = "info"
+        if finding.get('category') in ['ADMIN', 'CREDENTIALS', 'CONFIG']:
+            severity = "medium" if finding['status'] in [200, 301, 302] else "info"
+        
+        pwndoc_finding = {
+            'name': f"Discovered {finding['path']}",
+            'description': f"Path {finding['path']} returned status {finding['status']}",
+            'severity': severity,
+            'references': [finding['url']],
+            'status': "open"
+        }
+        
+        # Añadir evidencias si es interesante
+        if finding.get('category'):
+            pwndoc_finding['description'] += f" - Categorized as {finding['category']} ({finding.get('confidence', 'UNKNOWN')})"
+        
+        pwndoc_output['findings'].append(pwndoc_finding)
     
-    adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=100, pool_maxsize=100)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
+    # Guardar archivo
+    if not output_file:
+        output_file = f"hellfuzzer_scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     
-    # Headers por defecto
-    session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': '*/*',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Connection': 'keep-alive',
-    })
+    with open(output_file, 'w') as f:
+        json.dump(pwndoc_output, f, indent=2)
     
-    session.verify = verify_ssl
-    return session
+    print(f"{Colors.GREEN}[JSON] Results exported to {output_file}{Colors.END}")
+    return output_file
+def show_summary(stats, total_time):
+    """Muestra tabla resumen de estadísticas"""
+    print(f"\n{Colors.MAGENTA}{'='*60}{Colors.END}")
+    print(f"{Colors.MAGENTA}                  SCAN SUMMARY{Colors.END}")
+    print(f"{Colors.MAGENTA}{'='*60}{Colors.END}")
+    
+    # Estadísticas básicas
+    print(f"{Colors.CYAN}Total Requests:{Colors.END} {stats['total_requests']}")
+    print(f"{Colors.CYAN}Total Time:{Colors.END} {total_time:.2f}s")
+    print(f"{Colors.CYAN}Requests/sec:{Colors.END} {stats['total_requests']/total_time:.1f}")
+    
+    # Códigos de estado
+    print(f"\n{Colors.CYAN}Status Codes:{Colors.END}")
+    for code, count in sorted(stats['status_codes'].items()):
+        color = Colors.GREEN if code == 200 else Colors.YELLOW if code in [301, 302] else Colors.BLUE
+        print(f"  {color}{code}: {count}{Colors.END}")
+    
+    # Hallazgos interesantes
+    if stats['interesting_finds']:
+        print(f"\n{Colors.CYAN}Interesting Finds:{Colors.END}")
+        for category, count in sorted(stats['interesting_finds'].items()):
+            print(f"  {Colors.ORANGE}{category}: {count}{Colors.END}")
+    
+    # Recursividad
+    if stats.get('recursion_discovered', 0) > 0:
+        print(f"\n{Colors.CYAN}Recursion Discovered:{Colors.END} {stats['recursion_discovered']} paths")
+    
+    print(f"{Colors.MAGENTA}{'='*60}{Colors.END}")
 
-def worker(target_url, target_queue, cookies, verify_ssl, timeout, ignore_codes):
+def worker(target_url, target_queue, session, timeout, ignore_codes, recursion_manager=None, stats=None, pwndoc_findings=None):
     """
-    Función ejecutada por cada hilo - CON SESIÓN COMPARTIDA OPTIMIZADA
+    Función ejecutada por cada hilo - CON SESIÓN AUTENTICADA Y RECURSIVIDAD
     """
-    # Cada hilo tiene su propia sesión para mejor rendimiento
-    session = create_session(verify_ssl)
-    if cookies:
-        session.cookies.update(cookies)
-    
     while True:
         try:
             target = target_queue.get_nowait()
-            check_endpoint(target_url, target, session, timeout, ignore_codes)
+            
+            # Determinar profundidad actual si es recursivo
+            current_depth = 0
+            if recursion_manager and hasattr(target, 'depth'):
+                current_depth = target.depth
+                target_word = target.path
+            else:
+                target_word = target
+            
+            # Pasar target_queue a check_endpoint
+            check_endpoint(target_url, target_word, session, timeout, ignore_codes, 
+                          recursion_manager, current_depth, target_queue, stats, pwndoc_findings)  # Añadir pwndoc_findings 
             target_queue.task_done()
         except queue.Empty:
             break
@@ -291,13 +540,61 @@ def main():
                        help='Status codes to ignore (e.g., 403 404)')
     parser.add_argument('--show-interesting', action='store_true', default=True,
                        help='Highlight interesting findings (enabled by default)')
+    # Contadores para estadísticas
+    stats = {
+        'total_requests': 0,
+        'status_codes': {},
+        'interesting_finds': {},
+        'recursion_discovered': 0,
+        'start_time': time.time()
+    }
+
+     # NUEVAS OPCIONES DE AUTENTICACIÓN
+    parser.add_argument('--auth-basic', help='Basic Authentication: usuario:password')
+    parser.add_argument('--auth-jwt', help='JWT Token for Bearer authentication')
+    parser.add_argument('--auth-oauth2', help='OAuth2 Token for Bearer authentication') 
+    parser.add_argument('--auth-header', help='Custom auth header (e.g., "X-API-Key: value")')
     
+    # NUEVAS OPCIONES FUTURAS (para la siguiente fase)
+    parser.add_argument('--depth', type=int, default=0, help='Recursion depth (0=no recursion)')
+    parser.add_argument('--format', choices=['default', 'json'], default='default', help='Output format')
     args = parser.parse_args()
     
     # Validar URL
     if not validate_url(args.url):
         sys.exit(1)
     
+    # CONFIGURAR AUTENTICACIÓN
+    auth_manager = AuthManager(args)
+    session = auth_manager.get_session()
+    # NUEVO: ESTRUCTURA PARA JSON PWDOC
+    pwndoc_findings = {
+        'scan_info': {
+            'tool': 'hellFuzzer',
+            'version': '1.2',
+            'target': args.url,
+            'timestamp': datetime.now().isoformat(),
+            'wordlist': args.wordlist,
+            'threads': args.threads
+        },
+        'findings': []
+    }
+    # NUEVO: CONFIGURAR RECURSIVIDAD
+    recursion_manager = RecursionManager(max_depth=args.depth)
+    
+    # Probar autenticación si se configuró
+    if any([args.auth_basic, args.auth_jwt, args.auth_oauth2, args.auth_header]):
+        auth_ok, auth_msg = auth_manager.test_auth(args.url)
+        print(auth_msg)
+        if not auth_ok and "401" in auth_msg:
+            print(f"{Colors.YELLOW}Revisa las credenciales/token{Colors.END}")
+    # Probar autenticación si se configuró
+    if any([args.auth_basic, args.auth_jwt, args.auth_oauth2, args.auth_header]):
+        auth_ok, auth_msg = auth_manager.test_auth(args.url)
+        print(auth_msg)
+        if not auth_ok and "401" in auth_msg:
+            print(f"{Colors.YELLOW}Revisa las credenciales/token{Colors.END}")
+            
     # Configurar manejo de Ctrl+C
     try:
         import signal
@@ -347,8 +644,8 @@ def main():
         for _ in range(args.threads):
             thread = threading.Thread(
                 target=worker, 
-                args=(args.url, target_queue, cookies_dict, args.ssl_verify, args.timeout, args.ignore_status)
-            )
+                args=(args.url, target_queue, session, args.timeout, args.ignore_status, recursion_manager, stats, pwndoc_findings)  # 🆕 Añadir pwndoc_findings
+        )
             thread.daemon = True
             thread.start()
             threads.append(thread)
@@ -379,7 +676,14 @@ def main():
     total_time = time.time() - start_time
     print("-" * 60)
     print(f"{Colors.CYAN}[*] Scan completed in {total_time:.2f} seconds{Colors.END}")
-    
+        # NUEVO: MOSTRAR SUMMARY TABLE
+    stats['total_requests'] = len(all_targets)  # Usar el total real en lugar del contador
+    show_summary(stats, total_time)
+        #  NUEVO: EXPORTAR JSON PWDOC SI SE SOLICITA
+    if args.format == 'json':
+        output_file = export_pwndoc_json(pwndoc_findings)
+        print(f"{Colors.GREEN}[*] Pwndoc JSON exported to: {output_file}{Colors.END}")
+
     if total_time > 0:
         rps = len(all_targets) / total_time
         print(f"{Colors.CYAN}[*] Average: {rps:.1f} requests/second{Colors.END}")
