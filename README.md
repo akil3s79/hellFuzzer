@@ -6,7 +6,9 @@ A high-performance web directory and file fuzzer designed for penetration tester
 
 hellFuzzer is a Python-based tool that systematically discovers hidden directories and files on web servers. Built from the ground up for speed and real-world pentesting scenarios, it delivers professional-grade performance with an intuitive interface.
 
-**New in v1.1: Intelligent Content Detection** - Automatically highlights interesting findings like config files, backups, admin panels, and credentials with visual markers and confidence levels.
+v1.1: Intelligent Content Detection - Automatically highlights interesting findings like config files, backups, admin panels, and credentials with visual markers and confidence levels.
+
+**New in v1.2: Enterprise Features** - Multiple authentication methods, smart recursion, and professional reporting with Pwndoc JSON export.
 
 ## Why I Built This
 
@@ -17,6 +19,7 @@ While there are great fuzzers out there, I wanted something that:
 - **Offers flexible filtering** to focus on relevant findings
 - **Intelligently highlights critical findings** to reduce analysis time
 - **Integrates smoothly** into my pentesting workflow
+- **Supports professional reporting** with JSON export for tools like Pwndoc
 
 ## Key Features
 
@@ -30,13 +33,17 @@ While there are great fuzzers out there, I wanted something that:
 - **Customizable timeouts** - Adapt to slow networks or applications
 - **Real-time progress** - Live progress bar with requests/second metrics
 - **Professional output** - Clean, color-coded results with timestamps and formatted sizes
+- **Multiple authentication methods** - Basic Auth, JWT, OAuth2, and custom headers
+- **Smart recursion** - Automatically discover new paths by following links in HTML responses
+- **Professional reporting** - Summary table and Pwndoc JSON export for enterprise integration
 
 ## Installation
 
 git clone https://github.com/akil3s79/hellFuzzer.git
-cd hellfuzzer
-pip3 install -r requirements.txt
 
+cd hellfuzzer
+
+pip3 install -r requirements.txt
 
 ## Usage Examples
 - **Basic Scan: python3 hellFuzzer.py http://target.com common.txt** -
@@ -46,8 +53,11 @@ pip3 install -r requirements.txt
 - **High-Speed Scan: python3 hellFuzzer.py http://192.168.1.100 big_wordlist.txt -t 30** - 
 - **SSL validation: python3 hellFuzzer.py https://company.com common.txt --ssl-verify** -
 - **Ignore Specific Status Codes: python3 hellFuzzer.py http://target.com wordlist.txt --ignore-status 403 404** -
--  **Slow Network Target: python3 hellFuzzer.py http://slow.server common.txt --timeout 10** -
--  **Complete Example: python3 hellFuzzer.py https://testapp.com raft-medium-words.txt -t 30 -x php html --ignore-status 403 --timeout 3**-
+- **Slow Network Target: python3 hellFuzzer.py http://slow.server common.txt --timeout 10** -
+- **Complete Example: python3 hellFuzzer.py https://testapp.com raft-medium-words.txt -t 30 -x php html --ignore-status 403 --timeout 3 --auth-basic admin:pass --depth 1 --format json -**-
+- **Basic Authentication: python3 hellFuzzer.py https://admin.target.com common.txt --auth-basic user:password**-
+- **Recursive Discovery: python3 hellFuzzer.py http://target.com common.txt --depth 2**-
+- **JSON Export: python3 hellFuzzer.py http://target.com common.txt --format json**-
 
 ## Intelligent Content Detection: 
 hellFuzzer automatically detects and highlights interesting content:
@@ -56,6 +66,7 @@ hellFuzzer automatically detects and highlights interesting content:
 - **[16:43:18] 301 -  245B  - /admin -> /login.php ⚡ [ADMIN]** -
 - **[16:43:19] 200 -  45KB  - /backup.zip 🔥 [BACKUP]** -
 - **[16:43:20] 403 -  1.1KB - /.env 🔥 [CONFIG]** -
+- **[RECURSION] Depth 1: Added 14 paths from index.php** -
 
 ## Makers:
 - **🔥 - High confidence (specific patterns like .env, .bak, config.php)** -
@@ -69,6 +80,26 @@ hellFuzzer uses a clean, professional output format:
 - **[16:43:17] 301 - 245B - /admin -> /login.php** -
 - **[16:43:18] 403 - 1.2KB - /backup/** -
 
+## New: Summary Table
+-----------------------------------------------------------
+SCAN SUMMARY
+
+-----------------------------------------------------------
+Total Requests: 4613
+Total Time: 28.69s
+Requests/sec: 160.8
+
+Status Codes:
+200: 6
+301: 6
+
+Interesting Finds:
+ADMIN: 2
+
+-----------------------------------------------------------
+
+New: JSON Export - Pwndoc-compatible format for professional reporting
+
 ## Wordlists
 hellFuzzer works with any standard wordlist format. Some recommended wordlists:
 - **dirb/common.txt** - 
@@ -81,6 +112,7 @@ hellFuzzer works with any standard wordlist format. Some recommended wordlists:
 - **Ignore 403/404 status codes to reduce output noise** -
 - **Use targeted wordlists rather than huge generic ones** -
 - **Enable SSL verification only when testing production environments** -
+- **Use recursion (--depth) for comprehensive discovery but expect longer scan times**-
 
 ## Legal Notice
 This tool is intended for:
@@ -93,8 +125,8 @@ This tool is intended for:
 ## Contributing
 Found a bug? Have a feature request? Feel free to open an issue or pull request!
 
-## Puedes invitarme a un café si quieres!
+## You can buy me a coffe if you want!
 <a href="https://www.buymeacoffee.com/akil3s1979" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="27" width="104"></a>
 
-## You can buy me a coffe if you want!
+## Puedes invitarme a un café si quieres!
 <a href="https://www.buymeacoffee.com/akil3s1979" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="27" width="104"></a>
