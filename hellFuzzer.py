@@ -279,12 +279,12 @@ def is_interesting_path(path):
 def validate_url(url):
     """
     Validate and normalize target URL
+    Returns: (is_valid, normalized_url_or_error)
     """
     if not url.startswith(('http://', 'https://')):
-        print(f"{Colors.RED}[ERROR] URL must include protocol (http:// or https://){Colors.END}")
-        print(f"[INFO] Example: http://example.com or https://192.168.1.100")
-        return False
-    return True
+        error_msg = f"{Colors.RED}[ERROR] URL must include protocol (http:// or https://){Colors.END}"
+        return False, error_msg
+    return True, url
 
 def load_wordlist(wordlist_path):
     """
@@ -303,6 +303,35 @@ def load_wordlist(wordlist_path):
             return words
     except Exception as e:
         print(f"{Colors.RED}[ERROR] Reading wordlist: {e}{Colors.END}")
+        return None
+
+def load_targets_file(targets_file):
+    """
+    Load targets from file (one per line)
+    """
+    if not os.path.isfile(targets_file):
+        print(f"{Colors.RED}[ERROR] Targets file not found: {targets_file}{Colors.END}")
+        return None
+    
+    try:
+        with open(targets_file, 'r', encoding='utf-8') as file:
+            targets = [line.strip() for line in file if line.strip()]
+            if not targets:
+                print(f"{Colors.RED}[ERROR] Targets file is empty{Colors.END}")
+                return None
+            
+            # Validate each target
+            valid_targets = []
+            for target in targets:
+                is_valid, result = validate_url(target)
+                if is_valid:
+                    valid_targets.append(target)
+                else:
+                    print(f"{Colors.YELLOW}[WARNING] Skipping invalid target: {target}{Colors.END}")
+            
+            return valid_targets
+    except Exception as e:
+        print(f"{Colors.RED}[ERROR] Reading targets file: {e}{Colors.END}")
         return None
 
 def parse_cookies(cookie_string):
@@ -569,7 +598,7 @@ def main():
     parser.add_argument('--show-interesting', action='store_true', default=True,
                        help='Highlight interesting findings (enabled by default)')
     parser.add_argument('--delay', type=float, default=0, help='Delay between requests in seconds (anti-rate limiting)')
-    
+    parser.add_argument('-f', '--file', help='File with multiple targets (one per line)')
     # Statistics counters
     stats = {
         'total_requests': 0,
@@ -592,8 +621,28 @@ def main():
     args = parser.parse_args()
     
     # Validate URL
-    if not validate_url(args.url):
+    # Check if we have either single target or targets file
+    if not args.url and not args.file:
+        print(f"{Colors.RED}[ERROR] You must specify either a target URL or a targets file with -f{Colors.END}")
+        parser.print_help()
         sys.exit(1)
+
+    # Determine mode: single target vs multiple targets
+    targets = []
+    if args.file:
+        # Multiple targets mode
+        print(f"{Colors.CYAN}[*] Multiple targets mode: {args.file}{Colors.END}")
+        targets = load_targets_file(args.file)
+        if not targets:
+            sys.exit(1)
+        print(f"{Colors.CYAN}[*] Loaded {len(targets)} valid targets{Colors.END}")
+    else:
+        # Single target mode (original behavior)
+        is_valid, result = validate_url(args.url)
+        if not is_valid:
+            print(result)
+            sys.exit(1)
+        targets = [args.url]
     
     # SET UP AUTHENTICATION
     auth_manager = AuthManager(args)
@@ -660,66 +709,92 @@ def main():
     
     start_time = time.time()
     
-    try:
-        # Create queue and add ALL individual targets
-        target_queue = queue.Queue()
-        for target in all_targets:
-            target_queue.put(target)
+    # NEW: Loop for multiple targets
+    for target_url in targets:
+        print(f"{Colors.MAGENTA}[*] Scanning: {target_url}{Colors.END}")
         
-        # Create and launch threads
-        threads = []
-        for _ in range(args.threads):
-            thread = threading.Thread(
-                target=worker, 
-                args=(args.url, target_queue, session, args.timeout, args.ignore_status, args.delay, recursion_manager, stats, pwndoc_findings)
-            )
-            thread.daemon = True
-            thread.start()
-            threads.append(thread)
+        # Reset stats for each target
+        target_stats = {
+            'total_requests': 0,
+            'status_codes': {},
+            'interesting_finds': {},
+            'recursion_discovered': 0
+        }
         
-        # Show progress
-        initial_size = target_queue.qsize()
-        last_update = time.time()
+        # Reset recursion manager for each target  
+        recursion_manager = RecursionManager(max_depth=args.depth)
         
-        while any(thread.is_alive() for thread in threads):
-            remaining = target_queue.qsize()
-            completed = initial_size - remaining
-            
-            # Update progress every 0.5 seconds
-            if time.time() - last_update > 0.5:
-                progress = (completed / initial_size) * 100
-                rps = completed / (time.time() - start_time) if (time.time() - start_time) > 0 else 0
-                print(f"\r{Colors.CYAN}[*] Progress: {completed}/{initial_size} ({progress:.1f}%) | {rps:.1f} req/sec{Colors.END}", 
-                      end="", flush=True)
-                last_update = time.time()
-            
-            time.sleep(0.1)
-        
-        print()  # New line after progress
-        
-    except KeyboardInterrupt:
-        print(f"\n{Colors.RED}[!] Scan interrupted by user{Colors.END}")
-    
-    total_time = time.time() - start_time
-    print("-" * 60)
-    print(f"{Colors.CYAN}[*] Scan completed in {total_time:.2f} seconds{Colors.END}")
-    
-    # NEW: SHOW SUMMARY TABLE
-    stats['total_requests'] = len(all_targets)  # Use real total instead of counter
-    show_summary(stats, total_time)
-    
-    # NEW: EXPORT PWDOC JSON IF REQUESTED
-    if args.format == 'json':
-        output_file = export_pwndoc_json(pwndoc_findings)
-        print(f"{Colors.GREEN}[*] Pwndoc JSON exported to: {output_file}{Colors.END}")
+        # Reset Pwndoc findings for each target
+        pwndoc_findings = {
+            'scan_info': {
+                'tool': 'hellFuzzer',
+                'version': '1.2', 
+                'target': target_url,
+                'timestamp': datetime.now().isoformat(),
+                'wordlist': args.wordlist,
+                'threads': args.threads
+            },
+            'findings': []
+        }
 
-    if total_time > 0:
-        rps = len(all_targets) / total_time
-        print(f"{Colors.CYAN}[*] Average: {rps:.1f} requests/second{Colors.END}")
-        
-        if rps < 50:
-            print(f"{Colors.YELLOW}[!] Performance warning: Low requests per second{Colors.END}")
-            print(f"{Colors.YELLOW}[!] Consider reducing timeout or threads if target is rate limiting{Colors.END}")
+        try:
+            # Create queue and add ALL individual targets
+            target_queue = queue.Queue()
+            for target in all_targets:
+                target_queue.put(target)
+            
+            # Create and launch threads
+            threads = []
+            for _ in range(args.threads):
+                thread = threading.Thread(
+                    target=worker, 
+                    args=(target_url, target_queue, session, args.timeout, args.ignore_status, args.delay, recursion_manager, target_stats, pwndoc_findings)
+                )
+                thread.daemon = True
+                thread.start()
+                threads.append(thread)
+            
+            # Show progress
+            initial_size = target_queue.qsize()
+            last_update = time.time()
+            
+            while any(thread.is_alive() for thread in threads):
+                remaining = target_queue.qsize()
+                completed = initial_size - remaining
+                
+                # Update progress every 0.5 seconds
+                if time.time() - last_update > 0.5:
+                    progress = (completed / initial_size) * 100
+                    rps = completed / (time.time() - start_time) if (time.time() - start_time) > 0 else 0
+                    print(f"\r{Colors.CYAN}[*] Progress: {completed}/{initial_size} ({progress:.1f}%) | {rps:.1f} req/sec{Colors.END}", 
+                          end="", flush=True)
+                    last_update = time.time()
+                
+                time.sleep(0.1)
+            
+            print()  # New line after progress
+            
+            # Show summary for this target
+            target_total_time = time.time() - start_time
+            target_stats['total_requests'] = len(all_targets)
+            show_summary(target_stats, target_total_time)
+            
+            # Export JSON for this target if requested
+            if args.format == 'json':
+                safe_target = target_url.replace('://', '_').replace('/', '_').replace(':', '_')
+                output_file = f"hellfuzzer_scan_{safe_target}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                export_pwndoc_json(pwndoc_findings, output_file)
+            
+            print(f"{Colors.CYAN}{'='*60}{Colors.END}")
+            
+        except KeyboardInterrupt:
+            print(f"\n{Colors.RED}[!] Scan interrupted by user{Colors.END}")
+            break
+
+    # Final summary for multiple targets
+    if len(targets) > 1:
+        total_time = time.time() - start_time
+        print(f"{Colors.MAGENTA}[*] All targets completed in {total_time:.2f} seconds{Colors.END}")
 
 if __name__ == "__main__":
     main()
