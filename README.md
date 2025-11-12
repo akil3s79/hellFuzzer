@@ -8,7 +8,9 @@ hellFuzzer is a Python-based tool that systematically discovers hidden directori
 
 v1.1: Intelligent Content Detection - Automatically highlights interesting findings like config files, backups, admin panels, and credentials with visual markers and confidence levels.
 
-**New in v1.2: Enterprise Features** - Multiple authentication methods, smart recursion, and professional reporting with Pwndoc JSON export.
+v1.2: Enterprise Features - Multiple authentication methods, smart recursion, and professional reporting with Pwndoc JSON export.
+
+**New in v1.2.1: Advanced Operations - Multiple targets scanning, anti-rate limiting delays, and enhanced Windows compatibility.**
 
 ## Why I Built This
 
@@ -20,6 +22,9 @@ While there are great fuzzers out there, I wanted something that:
 - **Intelligently highlights critical findings** to reduce analysis time
 - **Integrates smoothly** into my pentesting workflow
 - **Supports professional reporting** with JSON export for tools like Pwndoc
+- **Scans multiple targets** efficiently without manual intervention
+- **Avoids rate limiting** with configurable delays between requests
+- **Works seamlessly across platforms** including Windows with proper color support
 
 ## Key Features
 
@@ -36,6 +41,9 @@ While there are great fuzzers out there, I wanted something that:
 - **Multiple authentication methods** - Basic Auth, JWT, OAuth2, and custom headers
 - **Smart recursion** - Automatically discover new paths by following links in HTML responses
 - **Professional reporting** - Summary table and Pwndoc JSON export for enterprise integration
+- **Multiple targets scanning** - Process multiple URLs from a file in single execution
+- **Anti-rate limiting** - Configurable delays between requests to avoid detection
+- **Cross-platform compatibility** - Full color support on Windows, Linux, and macOS
 
 ## Installation
 
@@ -47,17 +55,20 @@ pip3 install -r requirements.txt
 
 ## Usage Examples
 - **Basic Scan: python3 hellFuzzer.py http://target.com common.txt** -
-- **High-Speed Scan with Multiple Threads: python3 hellFuzzer.py https://webapp.com wordlist.txt -t 50** -
-- **Authenticated Scan with Cookies: python3 hellFuzzer.py https://webapp.com admin_paths.txt -c "sessionid=abc123; csrftoken=xyz"** -
-- **Scan with File Extensions: python3 hellFuzzer.py http://target.com common.txt -x php html txt** -
-- **High-Speed Scan: python3 hellFuzzer.py http://192.168.1.100 big_wordlist.txt -t 30** - 
-- **SSL validation: python3 hellFuzzer.py https://company.com common.txt --ssl-verify** -
-- **Ignore Specific Status Codes: python3 hellFuzzer.py http://target.com wordlist.txt --ignore-status 403 404** -
-- **Slow Network Target: python3 hellFuzzer.py http://slow.server common.txt --timeout 10** -
-- **Complete Example: python3 hellFuzzer.py https://testapp.com raft-medium-words.txt -t 30 -x php html --ignore-status 403 --timeout 3 --auth-basic admin:pass --depth 1 --format json -**-
-- **Basic Authentication: python3 hellFuzzer.py https://admin.target.com common.txt --auth-basic user:password**-
-- **Recursive Discovery: python3 hellFuzzer.py http://target.com common.txt --depth 2**-
-- **JSON Export: python3 hellFuzzer.py http://target.com common.txt --format json**-
+- **High-Speed Scan with Multiple Threads: python3 hellFuzzer.py https://webapp.com wordlist.txt -t 50**
+- **Authenticated Scan with Cookies: python3 hellFuzzer.py https://webapp.com admin_paths.txt -c "sessionid=abc123; csrftoken=xyz"**
+- **Scan with File Extensions: python3 hellFuzzer.py http://target.com common.txt -x php html txt**
+- **High-Speed Scan: python3 hellFuzzer.py http://192.168.1.100 big_wordlist.txt -t 30**
+- **SSL validation: python3 hellFuzzer.py https://company.com common.txt --ssl-verify**
+- **Ignore Specific Status Codes: python3 hellFuzzer.py http://target.com wordlist.txt --ignore-status 403 404**
+- **Slow Network Target: python3 hellFuzzer.py http://slow.server common.txt --timeout 10**
+- **Complete Example: python3 hellFuzzer.py https://testapp.com raft-medium-words.txt -t 30 -x php html --ignore-status 403 --timeout 3 --auth-basic admin:pass --depth 1 --format json -**
+- **Basic Authentication: python3 hellFuzzer.py https://admin.target.com common.txt --auth-basic user:password**
+- **Recursive Discovery: python3 hellFuzzer.py http://target.com common.txt --depth 2**
+- **JSON Export: python3 hellFuzzer.py http://target.com common.txt --format json**
+- **Multiple Targets Scan: python3 hellFuzzer.py -f targets.txt common.txt**
+- **Anti-Rate Limiting: python3 hellFuzzer.py http://target.com common.txt --delay 0.1**
+- **Multiple Targets with Delay: python3 hellFuzzer.py -f targets.txt common.txt --delay 0.2 -t 20**
 
 ## Intelligent Content Detection: 
 hellFuzzer automatically detects and highlights interesting content:
@@ -98,7 +109,7 @@ ADMIN: 2
 
 -----------------------------------------------------------
 
-New: JSON Export - Pwndoc-compatible format for professional reporting
+## JSON Export - Pwndoc-compatible format for professional reporting
 
 ## Wordlists
 hellFuzzer works with any standard wordlist format. Some recommended wordlists:
@@ -113,12 +124,14 @@ hellFuzzer works with any standard wordlist format. Some recommended wordlists:
 - **Use targeted wordlists rather than huge generic ones** -
 - **Enable SSL verification only when testing production environments** -
 - **Use recursion (--depth) for comprehensive discovery but expect longer scan times**-
+- **Use --delay 0.1-0.5 for targets with rate limiting protection**
+- **Combine multiple targets with -f for efficient large-scale scanning**
 
 ## Legal Notice
 This tool is intended for:
-- **Authorized penetration testing** - 
-- **Security research** - 
-- **Educational purposes** - 
+- **Authorized penetration testing** 
+- **Security research**
+- **Educational purposes**
 
 ## Only use hellFuzzer on systems you own or have explicit permission to test.
 
