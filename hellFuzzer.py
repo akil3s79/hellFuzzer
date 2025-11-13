@@ -2,10 +2,12 @@
 """
 hellFuzzer - Directory and file fuzzer for web pentesting  
 Author: akil3s (Rober)
-Version: 1.2.1
+Version: 1.3
 """
 
 import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import sys
 import threading
 import time
@@ -60,12 +62,72 @@ class Colors:
     ORANGE = '\033[33m' if USE_COLORS else ''
     END = '\033[0m' if USE_COLORS else ''
 
+def parse_code_list(s):
+    """Converts '200,301-302,401' → set {200,301,302,401}"""
+    codes = set()
+    for piece in s.split(','):
+        if '-' in piece:
+            start, end = map(int, piece.split('-'))
+            codes.update(range(start, end + 1))
+        else:
+            codes.add(int(piece))
+    return codes
+JS_PATH_RE = re.compile(r'''(?:"|')((?:\/|[a-zA-Z0-9\-._~%!$&'()*+,;=:@])[a-zA-Z0-9\-._~%!$&'()*+,;=:@\/]*)["']''')
+# Patterns to detect fetch() and XMLHttpRequest usage inside JS/HTML
+FETCH_RE = re.compile(r'fetch\(\s*[\'"]([^\'"]+)[\'"]', re.IGNORECASE)
+XHR_RE   = re.compile(r'open\(\s*[\'"](?:GET|POST|PUT|DELETE)[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]', re.IGNORECASE)
+
+def extract_js_paths(url, session, timeout):
+    """
+    Download a JS file (or any text resource) and extract paths found inside.
+    Returns a set of normalized absolute-path style strings (starting with '/').
+    """
+    try:
+        r = session.get(url, verify=False, timeout=timeout)
+        if r.status_code != 200:
+            return set()
+
+        txt = r.text
+
+        # Extract candidate strings using JS_PATH_RE (strings like "/api/..." or "assets/app.js")
+        paths = set(JS_PATH_RE.findall(txt))
+
+        # Also extract explicit fetch/XHR targets inside JS
+        try:
+            paths.update(FETCH_RE.findall(txt))
+            paths.update(XHR_RE.findall(txt))
+        except Exception:
+            pass
+
+        # Normalize: convert relative -> absolute-like (starting with '/')
+        normalized = set()
+        for p in paths:
+            if not p or p.lower().startswith(('javascript:', 'mailto:')):
+                continue
+            if p.startswith('http://') or p.startswith('https://'):
+                # keep only same-origin absolute paths (strip host)
+                from urllib.parse import urlparse
+                parsed_base = urlparse(url)
+                parsed_p = urlparse(p)
+                if parsed_p.netloc == parsed_base.netloc:
+                    normalized.add(parsed_p.path if parsed_p.path.startswith('/') else '/' + parsed_p.path)
+            elif p.startswith('/'):
+                normalized.add(p)
+            else:
+                # relative path -> prefix with '/' (we keep it as a root-anchored path)
+                normalized.add('/' + p.lstrip('/'))
+        return normalized
+    except Exception:
+        return set()
+
 class AuthManager:
     """Authentication manager for hellFuzzer"""
     
     def __init__(self, args):
         self.auth_config = self._parse_auth_args(args)
         self.session = requests.Session()
+        if args.proxy:
+            self.session.proxies = {'http': args.proxy, 'https': args.proxy}
         self._setup_authentication()
     
     def _parse_auth_args(self, args):
@@ -162,9 +224,8 @@ class RecursionManager:
         ]
         
         # Extensions we DON'T want to follow (static files, etc.)
-        skip_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.css', '.js', 
+        skip_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.css', 
                           '.ico', '.svg', '.woff', '.ttf', '.pdf', '.zip']
-        
         for pattern in patterns:
             found_links = re.findall(pattern, html_content, re.IGNORECASE)
             for link in found_links:
@@ -182,8 +243,41 @@ class RecursionManager:
                     links.add(f"{base_url.rstrip('/')}{link}")
                 elif not link.startswith(('#', 'javascript:', 'mailto:')):
                     links.add(f"{base_url.rstrip('/')}/{link}")
-        
+
+        # inline scripts: extract strings and fetch/XHR targets from inline JS
+        inline_scripts = re.findall(r'<script[^>]*>(.*?)</script>', html_content, re.DOTALL | re.IGNORECASE)
+        for script in inline_scripts:
+            # strings that look like paths inside inline script
+            for p in JS_PATH_RE.findall(script):
+                if p.startswith('http://') or p.startswith('https://'):
+                    if base_url in p:
+                        links.add(p)
+                elif p.startswith('/'):
+                    links.add(f"{base_url.rstrip('/')}{p}")
+                else:
+                    links.add(f"{base_url.rstrip('/')}/{p.lstrip('/')}")
+
+            # fetch() and XHR inside inline script
+            for f in FETCH_RE.findall(script):
+                if f.startswith('http://') or f.startswith('https://'):
+                    if base_url in f:
+                        links.add(f)
+                elif f.startswith('/'):
+                    links.add(f"{base_url.rstrip('/')}{f}")
+                else:
+                    links.add(f"{base_url.rstrip('/')}/{f.lstrip('/')}")
+
+            for x in XHR_RE.findall(script):
+                if x.startswith('http://') or x.startswith('https://'):
+                    if base_url in x:
+                        links.add(x)
+                elif x.startswith('/'):
+                    links.add(f"{base_url.rstrip('/')}{x}")
+                else:
+                    links.add(f"{base_url.rstrip('/')}/{x.lstrip('/')}")
+
         return links
+
     
     def process_discovered_links(self, new_links, target_queue, current_depth):
         """Add discovered links to queue for processing"""
@@ -205,7 +299,7 @@ class RecursionManager:
             if path and self.should_process(path, current_depth + 1):
                 target_queue.put(RecursiveLink(path, current_depth + 1))
                 added_count += 1
-        
+       
         return added_count
 
 class RecursiveLink:
@@ -295,12 +389,26 @@ def load_wordlist(wordlist_path):
         return None
     
     try:
-        with open(wordlist_path, 'r', encoding='latin-1') as file:
-            words = [line.strip() for line in file if line.strip()]
-            if not words:
-                print(f"{Colors.RED}[ERROR] Wordlist is empty{Colors.END}")
-                return None
-            return words
+        # Try multiple encodings to avoid BOM/UTF issues (utf-8-sig handles BOM)
+        encodings_to_try = ['utf-8-sig', 'utf-8', 'latin-1']
+        words = None
+        for enc in encodings_to_try:
+            try:
+                with open(wordlist_path, 'r', encoding=enc) as file:
+                    words = [line.strip() for line in file if line.strip()]
+                break
+            except UnicodeDecodeError:
+                continue
+
+        if words is None:
+            print(f"{Colors.RED}[ERROR] Reading wordlist: unsupported encoding{Colors.END}")
+            return None
+
+        if not words:
+            print(f"{Colors.RED}[ERROR] Wordlist is empty{Colors.END}")
+            return None
+
+        return words
     except Exception as e:
         print(f"{Colors.RED}[ERROR] Reading wordlist: {e}{Colors.END}")
         return None
@@ -376,7 +484,7 @@ def format_time():
     """Return current time in [HH:MM:SS] format"""
     return datetime.now().strftime("[%H:%M:%S]")
 
-def check_endpoint(target_url, word, session, timeout=2, ignore_codes=None, 
+def check_endpoint(target_url, word, session, timeout, args, ignore_codes=None, 
                    recursion_manager=None, current_depth=0, target_queue=None, 
                    stats=None, pwndoc_findings=None):
     """
@@ -386,7 +494,7 @@ def check_endpoint(target_url, word, session, timeout=2, ignore_codes=None,
         ignore_codes = []
     
     url = f"{target_url.rstrip('/')}/{word}"
-    
+        
     try:
         response = session.get(url, timeout=timeout, allow_redirects=False)
         status = response.status_code
@@ -394,7 +502,12 @@ def check_endpoint(target_url, word, session, timeout=2, ignore_codes=None,
         # If in ignore list, don't show
         if status in ignore_codes:
             return
-        
+        # Apply custom ok/hide codes
+        ok_codes   = parse_code_list(args.ok_codes)
+        hide_codes = parse_code_list(args.hide_codes)
+        if status in hide_codes:
+            return
+        hit = status in ok_codes
         # Check if interesting
         is_interesting, category, confidence = is_interesting_path(word)
         
@@ -430,9 +543,91 @@ def check_endpoint(target_url, word, session, timeout=2, ignore_codes=None,
         if stats:
             stats['total_requests'] += 1
             stats['status_codes'][status] = stats['status_codes'].get(status, 0) + 1
-            
+                # Also scan any response body for fetch()/XHR endpoints (useful if server returns JS without .js extension)
+        if args.spa:
+            try:
+                any_fetches = set(FETCH_RE.findall(response.text)) | set(XHR_RE.findall(response.text))
+            except Exception:
+                any_fetches = set()
+            base = target_url.rstrip('/')
+            for f in any_fetches:
+                if f.startswith(('http://', 'https://')):
+                    if base in f:
+                        parsed = f.split('/', 3)
+                        candidate = '/' + parsed[3] if len(parsed) > 3 else '/'
+                    else:
+                        continue
+                elif f.startswith('/'):
+                    candidate = f
+                else:
+                    candidate = '/' + f.lstrip('/')
+                enqueue = candidate.lstrip('/')
+                full = base + candidate
+                if enqueue and full not in seen:
+                    target_queue.put(enqueue)
+                    seen.add(full)
+                    stats['spa_js_paths'] = stats.get('spa_js_paths', 0) + 1
+    
             if is_interesting:
                 stats['interesting_finds'][category] = stats['interesting_finds'].get(category, 0) + 1
+        
+        # If SPA mode is enabled and this is HTML, extract <script src> and inline fetch/XHR references
+        if args.spa and 'text/html' in response.headers.get('content-type', '').lower():
+            # find script src attributes
+            script_srcs = re.findall(r'<script[^>]+src=[\'"]([^\'"]+)[\'"]', response.text, re.IGNORECASE)
+            base = target_url.rstrip('/')
+            for s in script_srcs:
+                # normalize to path without leading slash for queue consistency
+                if s.startswith(('http://', 'https://')):
+                    # only enqueue same-origin scripts
+                    if base in s:
+                        parsed = s.split('/', 3)
+                        path_part = '/' + parsed[3] if len(parsed) > 3 else '/'
+                        candidate = path_part
+                    else:
+                        continue
+                elif s.startswith('/'):
+                    candidate = s
+                else:
+                    candidate = '/' + s.lstrip('/')
+                # remove leading slash before putting in queue (main uses paths without leading slash)
+                enqueue = candidate.lstrip('/')
+                full = base + candidate
+                if enqueue and full not in seen:
+                    target_queue.put(enqueue)
+                    seen.add(full)
+                    stats['spa_js_paths'] = stats.get('spa_js_paths', 0) + 1
+
+            # Also check inline scripts for fetch()/XHR and add those endpoints
+            inline_fetches = set(FETCH_RE.findall(response.text)) | set(XHR_RE.findall(response.text))
+            for f in inline_fetches:
+                if f.startswith(('http://', 'https://')):
+                    if base in f:
+                        parsed = f.split('/', 3)
+                        candidate = '/' + parsed[3] if len(parsed) > 3 else '/'
+                    else:
+                        continue
+                elif f.startswith('/'):
+                    candidate = f
+                else:
+                    candidate = '/' + f.lstrip('/')
+                enqueue = candidate.lstrip('/')
+                full = base + candidate
+                if enqueue and full not in seen:
+                    target_queue.put(enqueue)
+                    seen.add(full)
+                    stats['spa_js_paths'] = stats.get('spa_js_paths', 0) + 1
+
+        # SPA mode: extract JS paths (force parse for .js)
+        if args.spa and word.endswith('.js'):
+            new_paths = extract_js_paths(url, session, timeout)
+            base = target_url.rstrip('/')
+            for p in new_paths:
+                full = base + p
+                if full not in seen:
+                    target_queue.put(p)
+                    seen.add(full)
+                    stats['spa_js_paths'] = stats.get('spa_js_paths', 0) + 1
         
         # PROCESS RECURSION IF ACTIVE
         if recursion_manager and recursion_manager.max_depth > 0:
@@ -470,10 +665,10 @@ def check_endpoint(target_url, word, session, timeout=2, ignore_codes=None,
 
     except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, requests.exceptions.TooManyRedirects):
         # Silence common errors
-        pass
+        return
     except Exception:
         # Silence other errors
-        pass
+        return
 
 def export_pwndoc_json(pwndoc_findings, output_file=None):
     """Export results in Pwndoc JSON format"""  
@@ -518,17 +713,21 @@ def export_pwndoc_json(pwndoc_findings, output_file=None):
     print(f"{Colors.GREEN}[JSON] Results exported to {output_file}{Colors.END}")
     return output_file
 
-def show_summary(stats, total_time):
+def show_summary(stats, total_time, args):
     """Show statistics summary table"""
     print(f"\n{Colors.MAGENTA}{'='*60}{Colors.END}")
     print(f"{Colors.MAGENTA}                  SCAN SUMMARY{Colors.END}")
+    if args.spa and stats.get('spa_js_paths'):
+        print(f"{Colors.CYAN}[SPA] New JS routes added: {stats['spa_js_paths']}{Colors.END}")
     print(f"{Colors.MAGENTA}{'='*60}{Colors.END}")
     
     # Basic statistics
     print(f"{Colors.CYAN}Total Requests:{Colors.END} {stats['total_requests']}")
     print(f"{Colors.CYAN}Total Time:{Colors.END} {total_time:.2f}s")
     print(f"{Colors.CYAN}Requests/sec:{Colors.END} {stats['total_requests']/total_time:.1f}")
-    
+    if args.spa and stats.get('spa_js_paths'):
+        print(f"  {Colors.CYAN}SPA JS routes added: {stats['spa_js_paths']}{Colors.END}")
+    # Status codes
     # Status codes
     print(f"\n{Colors.CYAN}Status Codes:{Colors.END}")
     for code, count in sorted(stats['status_codes'].items()):
@@ -547,7 +746,7 @@ def show_summary(stats, total_time):
     
     print(f"{Colors.MAGENTA}{'='*60}{Colors.END}")
 
-def worker(target_url, target_queue, session, timeout, ignore_codes, delay=0, recursion_manager=None, stats=None, pwndoc_findings=None):
+def worker(target_url, target_queue, session, timeout, args, ignore_codes=None, delay=0, recursion_manager=None, stats=None, pwndoc_findings=None):
     """
     Function executed by each thread - WITH AUTHENTICATED SESSION AND RECURSION
     """
@@ -564,8 +763,7 @@ def worker(target_url, target_queue, session, timeout, ignore_codes, delay=0, re
                 target_word = target
             
             # Pass target_queue to check_endpoint
-            check_endpoint(target_url, target_word, session, timeout, ignore_codes, 
-                          recursion_manager, current_depth, target_queue, stats, pwndoc_findings)
+            check_endpoint(target_url, target_word, session, timeout, args, ignore_codes,recursion_manager, current_depth, target_queue, stats, pwndoc_findings)
             # ANTI-RATE LIMITING DELAY
             if delay > 0:
                 time.sleep(delay)              
@@ -584,11 +782,14 @@ def main():
     parser = ArgumentParser(description='hellFuzzer - Web directory fuzzer for pentesting')
     parser.add_argument('url', help='Target URL (e.g., http://example.com or https://target.com)')
     parser.add_argument('wordlist', help='Path to wordlist file')
+    parser.add_argument('--spa', action='store_true', help='Download JS and extract routes to the queue')
     parser.add_argument('-t', '--threads', type=int, default=30, 
                        help='Number of threads (default: 30)')
+    parser.add_argument('--proxy', help='Proxy URL: socks5://127.0.0.1:9050  or  http://127.0.0.1:8080', default=None)
+    parser.add_argument('--timeout', type=int, default=3, help='Timeout per request (seconds)')
+    parser.add_argument('--ok-codes', default='200-299', help='Status codes counted as hit (e.g. 200,301-302,401)')
+    parser.add_argument('--hide-codes', default='404', help='Hide these status codes (e.g. 404,500)')
     parser.add_argument('-c', '--cookies', help='Session cookies (e.g., "session=abc123; user=admin")')
-    parser.add_argument('--timeout', type=int, default=2, 
-                       help='Request timeout in seconds (default: 2)')
     parser.add_argument('--ssl-verify', action='store_true',
                        help='Verify SSL certificates (disabled by default)')
     parser.add_argument('-x', '--extensions', nargs='+', 
@@ -686,7 +887,14 @@ def main():
     words = load_wordlist(args.wordlist)
     if not words:
         sys.exit(1)
-        
+
+    # --- ensure common entry files are present for SPA discovery ---
+    common_entries = ['index.html', 'index.php', 'main.js', 'app.js', 'bundle.js', 'app.min.js']
+    for ce in common_entries:
+        if ce not in words:
+            words.append(ce)
+    # --------------------------------------------------------------
+
     # Generate ALL targets
     all_targets = generate_all_targets(words, args.extensions)
     
@@ -708,88 +916,108 @@ def main():
     print("-" * 60)
     
     start_time = time.time()
-    
-    # NEW: Loop for multiple targets
-    for target_url in targets:
-        print(f"{Colors.MAGENTA}[*] Scanning: {target_url}{Colors.END}")
-        
-        # Reset stats for each target
-        target_stats = {
-            'total_requests': 0,
-            'status_codes': {},
-            'interesting_finds': {},
-            'recursion_discovered': 0
-        }
-        
-        # Reset recursion manager for each target  
-        recursion_manager = RecursionManager(max_depth=args.depth)
-        
-        # Reset Pwndoc findings for each target
-        pwndoc_findings = {
-            'scan_info': {
-                'tool': 'hellFuzzer',
-                'version': '1.2', 
-                'target': target_url,
-                'timestamp': datetime.now().isoformat(),
-                'wordlist': args.wordlist,
-                'threads': args.threads
-            },
-            'findings': []
-        }
 
-        try:
+    try:
+        # Loop for multiple targets
+        for target_url in targets:
+            print(f"{Colors.MAGENTA}[*] Scanning: {target_url}{Colors.END}")
+
+            # Reset stats for each target
+            target_stats = {
+                'total_requests': 0,
+                'status_codes': {},
+                'interesting_finds': {},
+                'recursion_discovered': 0
+            }
+
+            # Reset recursion manager for each target
+            recursion_manager = RecursionManager(max_depth=args.depth)
+
+            # Reset Pwndoc findings for each target
+            pwndoc_findings = {
+                'scan_info': {
+                    'tool': 'hellFuzzer',
+                    'version': '1.2',
+                    'target': target_url,
+                    'timestamp': datetime.now().isoformat(),
+                    'wordlist': args.wordlist,
+                    'threads': args.threads
+                },
+                'findings': []
+            }
+
+            # --- ensure module-level seen is available for threads and check_endpoint ---
+            global seen
+            seen = set()          # for SPA mode
+            # --------------------------------------------------------------------------
+
+            # Try one initial GET to root to grab index.html and script srcs (helps SPA discovery)
+            if args.spa:
+                try:
+                    r_root = session.get(target_url.rstrip('/') + '/', timeout=args.timeout, allow_redirects=True)
+                    if r_root.status_code == 200 and 'text/html' in r_root.headers.get('content-type',''):
+                        # extract scripts and add to words if not already present
+                        script_srcs = re.findall(r'<script[^>]+src=[\'"]([^\'"]+)[\'"]', r_root.text, re.IGNORECASE)
+                        for s in script_srcs:
+                            s_norm = s.lstrip('/')
+                            if s_norm not in words:
+                                words.append(s_norm)
+                except Exception:
+                    pass
+
             # Create queue and add ALL individual targets
             target_queue = queue.Queue()
             for target in all_targets:
                 target_queue.put(target)
-            
+
             # Create and launch threads
             threads = []
             for _ in range(args.threads):
                 thread = threading.Thread(
-                    target=worker, 
-                    args=(target_url, target_queue, session, args.timeout, args.ignore_status, args.delay, recursion_manager, target_stats, pwndoc_findings)
+                    target=worker,
+                    args=(target_url, target_queue, session, args.timeout, args, args.ignore_status, args.delay, recursion_manager, target_stats, pwndoc_findings)
                 )
                 thread.daemon = True
                 thread.start()
                 threads.append(thread)
-            
+
             # Show progress
             initial_size = target_queue.qsize()
+            if initial_size == 0:
+                initial_size = 1        # avoid ZeroDivision
             last_update = time.time()
-            
+
             while any(thread.is_alive() for thread in threads):
                 remaining = target_queue.qsize()
                 completed = initial_size - remaining
-                
+
                 # Update progress every 0.5 seconds
                 if time.time() - last_update > 0.5:
                     progress = (completed / initial_size) * 100
                     rps = completed / (time.time() - start_time) if (time.time() - start_time) > 0 else 0
-                    print(f"\r{Colors.CYAN}[*] Progress: {completed}/{initial_size} ({progress:.1f}%) | {rps:.1f} req/sec{Colors.END}", 
+                    print(f"\r{Colors.CYAN}[*] Progress: {completed}/{initial_size} ({progress:.1f}%) | {rps:.1f} req/sec{Colors.END}",
                           end="", flush=True)
                     last_update = time.time()
-                
+
                 time.sleep(0.1)
-            
+
             print()  # New line after progress
-            
+
             # Show summary for this target
             target_total_time = time.time() - start_time
             target_stats['total_requests'] = len(all_targets)
-            show_summary(target_stats, target_total_time)
-            
+            show_summary(target_stats, target_total_time, args)
+
             # Export JSON for this target if requested
             if args.format == 'json':
                 safe_target = target_url.replace('://', '_').replace('/', '_').replace(':', '_')
                 output_file = f"hellfuzzer_scan_{safe_target}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
                 export_pwndoc_json(pwndoc_findings, output_file)
-            
+
             print(f"{Colors.CYAN}{'='*60}{Colors.END}")
-            
-        except KeyboardInterrupt:
-            print(f"\n{Colors.RED}[!] Scan interrupted by user{Colors.END}")
-            break
+
+    except KeyboardInterrupt:
+        print(f"\n{Colors.RED}[!] Scan interrupted by user{Colors.END}")
 
     # Final summary for multiple targets
     if len(targets) > 1:

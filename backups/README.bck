@@ -10,9 +10,7 @@ v1.1: Intelligent Content Detection - Automatically highlights interesting findi
 
 v1.2: Enterprise Features - Multiple authentication methods, smart recursion, and professional reporting with Pwndoc JSON export.
 
-New in v1.2.1: Advanced Operations - Multiple targets scanning, anti-rate limiting delays, and enhanced Windows compatibility.
-
-**New in v1.3: SPA Mode - Extract routes from JavaScript files, inline scripts, fetch() and XHR calls. Proxy support (HTTP/SOCKS5) and custom status-code filters.**
+**New in v1.2.1: Advanced Operations - Multiple targets scanning, anti-rate limiting delays, and enhanced Windows compatibility.**
 
 ## Why I Built This
 
@@ -27,9 +25,6 @@ While there are great fuzzers out there, I wanted something that:
 - **Scans multiple targets** efficiently without manual intervention
 - **Avoids rate limiting** with configurable delays between requests
 - **Works seamlessly across platforms** including Windows with proper color support
-- **Extracts hidden routes from SPAs** by parsing JavaScript, fetch() and XHR calls
-- **Supports HTTP/SOCKS5 proxies** for routing through Burp or other tools
-- **Allows custom status-code filters** to define what counts as a "hit"
 
 ## Key Features
 
@@ -49,9 +44,6 @@ While there are great fuzzers out there, I wanted something that:
 - **Multiple targets scanning** - Process multiple URLs from a file in single execution
 - **Anti-rate limiting** - Configurable delays between requests to avoid detection
 - **Cross-platform compatibility** - Full color support on Windows, Linux, and macOS
-- **SPA route extraction** - Discover hidden endpoints in Single Page Applications
-- **Proxy support** - Route traffic through HTTP or SOCKS5 proxies (Burp, ZAP, etc.)
-- **Custom status-code filters** - Define which codes count as valid hits (e.g. 200,301-302,401)
 
 ## Installation
 
@@ -70,26 +62,22 @@ pip3 install -r requirements.txt
 - **SSL validation: python3 hellFuzzer.py https://company.com common.txt --ssl-verify**
 - **Ignore Specific Status Codes: python3 hellFuzzer.py http://target.com wordlist.txt --ignore-status 403 404**
 - **Slow Network Target: python3 hellFuzzer.py http://slow.server common.txt --timeout 10**
-- **Complete Example: python3 hellFuzzer.py https://testapp.com raft-medium-words.txt -t 30 -x php html --ignore-status 403 --timeout 3 --auth-basic admin:pass --depth 1 --format json**
+- **Complete Example: python3 hellFuzzer.py https://testapp.com raft-medium-words.txt -t 30 -x php html --ignore-status 403 --timeout 3 --auth-basic admin:pass --depth 1 --format json -**
 - **Basic Authentication: python3 hellFuzzer.py https://admin.target.com common.txt --auth-basic user:password**
 - **Recursive Discovery: python3 hellFuzzer.py http://target.com common.txt --depth 2**
 - **JSON Export: python3 hellFuzzer.py http://target.com common.txt --format json**
 - **Multiple Targets Scan: python3 hellFuzzer.py -f targets.txt common.txt**
 - **Anti-Rate Limiting: python3 hellFuzzer.py http://target.com common.txt --delay 0.1**
 - **Multiple Targets with Delay: python3 hellFuzzer.py -f targets.txt common.txt --delay 0.2 -t 20**
-- **SPA Route Discovery: python3 hellFuzzer.py https://spa.com common.txt --spa -x js**
-- **Proxy through Burp: python3 hellFuzzer.py https://target.com common.txt --proxy http://127.0.0.1:8080**
-- **Custom Status Filters: python3 hellFuzzer.py https://target.com common.txt --ok-codes 200,301-302,401 --hide-codes 404,500**
 
 ## Intelligent Content Detection: 
 hellFuzzer automatically detects and highlights interesting content:
 - **[16:43:16] 200 -  377B  - /images/** -
 - **[16:43:17] 200 -  1.2KB - /config.php 🔥 [CONFIG]** -
-- **[16:43:18] 301 -  245B  - /admin -&gt; /login.php ⚡ [ADMIN]** -
+- **[16:43:18] 301 -  245B  - /admin -> /login.php ⚡ [ADMIN]** -
 - **[16:43:19] 200 -  45KB  - /backup.zip 🔥 [BACKUP]** -
 - **[16:43:20] 403 -  1.1KB - /.env 🔥 [CONFIG]** -
 - **[RECURSION] Depth 1: Added 14 paths from index.php** -
-- **[SPA] New JS routes added: 23** -
 
 ## Makers:
 - **🔥 - High confidence (specific patterns like .env, .bak, config.php)** -
@@ -100,7 +88,7 @@ Categories: BACKUP, CONFIG, ADMIN, CREDENTIALS, DATABASE, LOG, GIT
 ## Output Format:
 hellFuzzer uses a clean, professional output format:
 - **[16:43:16] 200 - 377B - /images/** -
-- **[16:43:17] 301 - 245B - /admin -&gt; /login.php** -
+- **[16:43:17] 301 - 245B - /admin -> /login.php** -
 - **[16:43:18] 403 - 1.2KB - /backup/** -
 
 ## New: Summary Table
@@ -118,7 +106,6 @@ Status Codes:
 
 Interesting Finds:
 ADMIN: 2
-SPA JS routes added: 23
 
 -----------------------------------------------------------
 
@@ -139,8 +126,6 @@ hellFuzzer works with any standard wordlist format. Some recommended wordlists:
 - **Use recursion (--depth) for comprehensive discovery but expect longer scan times**-
 - **Use --delay 0.1-0.5 for targets with rate limiting protection**
 - **Combine multiple targets with -f for efficient large-scale scanning**
-- **Enable SPA mode (--spa) for modern JavaScript-heavy applications**
-- **Route through Burp (--proxy) for manual inspection and logging**
 
 ## Legal Notice
 This tool is intended for:
@@ -154,7 +139,7 @@ This tool is intended for:
 Found a bug? Have a feature request? Feel free to open an issue or pull request!
 
 ## You can buy me a coffe if you want!
-&lt;a href="https://www.buymeacoffee.com/akil3s1979" target="_blank"&gt;&lt;img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="27" width="104"&gt;&lt;/a&gt;
+<a href="https://www.buymeacoffee.com/akil3s1979" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="27" width="104"></a>
 
 ## Puedes invitarme a un café si quieres!
-&lt;a href="https://www.buymeacoffee.com/akil3s1979" target="_blank"&gt;&lt;img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="27" width="104"&gt;&lt;/a&gt;
+<a href="https://www.buymeacoffee.com/akil3s1979" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="27" width="104"></a>
