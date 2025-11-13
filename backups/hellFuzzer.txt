@@ -1,4 +1,0 @@
-const api = "/api/v1/login";
-fetch("/api/v1/users");
-var xhr = new XMLHttpRequest();
-xhr.open("GET", "/private/data", true);
