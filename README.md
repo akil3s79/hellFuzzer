@@ -12,7 +12,9 @@ v1.2: Enterprise Features - Multiple authentication methods, smart recursion, an
 
 New in v1.2.1: Advanced Operations - Multiple targets scanning, anti-rate limiting delays, and enhanced Windows compatibility.
 
-**New in v1.3: SPA Mode - Extract routes from JavaScript files, inline scripts, fetch() and XHR calls. Proxy support (HTTP/SOCKS5) and custom status-code filters.**
+New in v1.3: SPA Mode - Extract routes from JavaScript files, inline scripts, fetch() and XHR calls. Proxy support (HTTP/SOCKS5) and custom status-code filters.
+
+**New in v1.4: Smart Filtering - Auto-filter duplicate responses and error pages with configurable aggressiveness. Word mining extracts hidden endpoints from HTML/JS content. Auto-recursion intelligently discovers directory structures.**
 
 ## Why I Built This
 
@@ -30,10 +32,14 @@ While there are great fuzzers out there, I wanted something that:
 - **Extracts hidden routes from SPAs** by parsing JavaScript, fetch() and XHR calls
 - **Supports HTTP/SOCKS5 proxies** for routing through Burp or other tools
 - **Allows custom status-code filters** to define what counts as a "hit"
+- **Automatically filters noise** by detecting duplicate responses and common error pages
+- **Discovers hidden endpoints** through intelligent word mining from HTML/JS content
+- **Automatically explores directory structures** with smart recursion
+- **Provides adjustable filtering** to balance between findings and noise reduction
 
 ## Key Features
 
-- **Multi-threaded performance** - Scan thousands of paths in seconds, not minutes (150+ req/sec)
+- **Multi-threaded performance** - Scan thousands of paths in seconds, not minutes (600+ req/sec)
 - **Smart content detection** - Automatically flags interesting findings (configs, backups, admin panels, credentials)
 - **Confidence-based highlighting** - Visual indicators (🔥/⚡) for high/medium confidence findings
 - **Session support** - Test authenticated areas with cookies
@@ -52,6 +58,12 @@ While there are great fuzzers out there, I wanted something that:
 - **SPA route extraction** - Discover hidden endpoints in Single Page Applications
 - **Proxy support** - Route traffic through HTTP or SOCKS5 proxies (Burp, ZAP, etc.)
 - **Custom status-code filters** - Define which codes count as valid hits (e.g. 200,301-302,401)
+- **Auto-filter intelligence** - Automatically detect and filter duplicate responses and error pages
+- **Configurable filtering** - Adjust filter aggressiveness from low to high (1-5 levels)
+- **Word mining** - Extract hidden endpoints and parameters from HTML/JS responses
+- **Auto-recursion** - Automatically discover and fuzz inside directories
+- **Scope locking** - Restrict scanning to specific domains for focused testing
+- **CI-friendly output** - Clean mode for pipelines and automated processes
 
 ## Installation
 
@@ -80,33 +92,40 @@ pip3 install -r requirements.txt
 - **SPA Route Discovery: python3 hellFuzzer.py https://spa.com common.txt --spa -x js**
 - **Proxy through Burp: python3 hellFuzzer.py https://target.com common.txt --proxy http://127.0.0.1:8080**
 - **Custom Status Filters: python3 hellFuzzer.py https://target.com common.txt --ok-codes 200,301-302,401 --hide-codes 404,500**
+- **Smart Auto-filtering: python3 hellFuzzer.py https://target.com common.txt --auto-filter --filter-aggressiveness 3**
+- **Word Mining: python3 hellFuzzer.py https://target.com common.txt --word-mine**
+- **Auto-recursion: python3 hellFuzzer.py https://target.com common.txt --auto-recurse**
+- **Scope-Locked Scan: python3 hellFuzzer.py https://target.com common.txt --scope-lock target.com**
+- **CI Pipeline: python3 hellFuzzer.py https://target.com common.txt --ci --format json**
 
 ## Intelligent Content Detection: 
 hellFuzzer automatically detects and highlights interesting content:
-- **[16:43:16] 200 -  377B  - /images/** -
-- **[16:43:17] 200 -  1.2KB - /config.php 🔥 [CONFIG]** -
-- **[16:43:18] 301 -  245B  - /admin -&gt; /login.php ⚡ [ADMIN]** -
-- **[16:43:19] 200 -  45KB  - /backup.zip 🔥 [BACKUP]** -
-- **[16:43:20] 403 -  1.1KB - /.env 🔥 [CONFIG]** -
-- **[RECURSION] Depth 1: Added 14 paths from index.php** -
-- **[SPA] New JS routes added: 23** -
+- **[16:43:16] 200 -  377B  - /images/** 
+- **[16:43:17] 200 -  1.2KB - /config.php 🔥 [CONFIG]** 
+- **[16:43:18] 301 -  245B  - /admin -&gt; /login.php ⚡ [ADMIN]** 
+- **[16:43:19] 200 -  45KB  - /backup.zip 🔥 [BACKUP]** 
+- **[16:43:20] 403 -  1.1KB - /.env 🔥 [CONFIG]** 
+- **[RECURSION] Depth 1: Added 14 paths from index.php** 
+- **[SPA] New JS routes added: 23** 
+- **[WORD-MINE] Added 306 words from: /index.php** 
+- **[AUTO-RECURSE] Added 14 paths inside directory: /admin** 
+- **[AUTO-FILTER] 4733 responses filtered** 
 
-## Makers:
-- **🔥 - High confidence (specific patterns like .env, .bak, config.php)** -
-- **⚡ - Medium confidence (generic patterns like admin, backup, password)** -
+## Markers:
+- **🔥 - High confidence (specific patterns like .env, .bak, config.php)** 
+- **⚡ - Medium confidence (generic patterns like admin, backup, password)** 
 
 Categories: BACKUP, CONFIG, ADMIN, CREDENTIALS, DATABASE, LOG, GIT
 
 ## Output Format:
 hellFuzzer uses a clean, professional output format:
-- **[16:43:16] 200 - 377B - /images/** -
-- **[16:43:17] 301 - 245B - /admin -&gt; /login.php** -
-- **[16:43:18] 403 - 1.2KB - /backup/** -
+- **[16:43:16] 200 - 377B - /images/** 
+- **[16:43:17] 301 - 245B - /admin -&gt; /login.php** 
+- **[16:43:18] 403 - 1.2KB - /backup/** 
 
 ## New: Summary Table
 -----------------------------------------------------------
 SCAN SUMMARY
-
 -----------------------------------------------------------
 Total Requests: 4613
 Total Time: 28.69s
@@ -118,12 +137,47 @@ Status Codes:
 
 Interesting Finds:
 ADMIN: 2
-SPA JS routes added: 23
 
+Word mining: 608 words discovered
+Auto-recursion: 142 paths discovered
+Auto-filter: 4733 responses filtered
 -----------------------------------------------------------
 
 ## JSON Export - Pwndoc-compatible format for professional reporting
 
+hellFuzzer generates professional JSON reports compatible with Pwndoc for enterprise penetration testing workflows:
+
+**Features:**
+- **Structured Findings** - Each discovered path with status code, size, and metadata
+- **Severity Classification** - Automatic categorization based on path patterns and status codes
+- **Scan Metadata** - Complete scan information (target, wordlist, threads, timestamp)
+- **Pwndoc Integration** - Direct import into Pwndoc for report generation
+
+**Usage:**
+- **Basic Export: python3 hellFuzzer.py http://target.com common.txt --format json**
+- **With Authentication: python3 hellFuzzer.py https://admin.target.com common.txt --auth-basic user:pass --format json**
+- **Multiple Targets: python3 hellFuzzer.py -f targets.txt common.txt --format json**
+
+**Output File:** `hellfuzzer_scan_target_YYYYMMDD_HHMMSS.json`
+
+**JSON Structure:**
+```json
+{
+  "name": "hellFuzzer Scan - http://target.com",
+  "scope": ["http://target.com"],
+  "createdAt": "2024-01-15T12:30:45",
+  "startDate": "2024-01-15T12:25:30",
+  "endDate": "2024-01-15T12:30:45",
+  "findings": [
+    {
+      "name": "Discovered /admin",
+      "description": "Path /admin returned status 301 - Categorized as ADMIN (MEDIUM)",
+      "severity": "medium",
+      "references": ["http://target.com/admin"],
+      "status": "open"
+    }
+  ]
+}
 ## Wordlists
 hellFuzzer works with any standard wordlist format. Some recommended wordlists:
 - **dirb/common.txt** - 
@@ -141,6 +195,12 @@ hellFuzzer works with any standard wordlist format. Some recommended wordlists:
 - **Combine multiple targets with -f for efficient large-scale scanning**
 - **Enable SPA mode (--spa) for modern JavaScript-heavy applications**
 - **Route through Burp (--proxy) for manual inspection and logging**
+- **Use --auto-filter to reduce noise from duplicate responses and error pages**
+- **Adjust --filter-aggressiveness (1-5) to balance between findings and noise reduction**
+- **Enable --word-mine to discover hidden endpoints from HTML/JS content**
+- **Use --auto-recurse for automatic directory structure discovery**
+- **Apply --scope-lock for focused testing on specific domains**
+- **Use --ci for clean output in automated pipelines and JSON export**
 
 ## Legal Notice
 This tool is intended for:
@@ -154,7 +214,7 @@ This tool is intended for:
 Found a bug? Have a feature request? Feel free to open an issue or pull request!
 
 ## You can buy me a coffe if you want!
-&lt;a href="https://www.buymeacoffee.com/akil3s1979" target="_blank"&gt;&lt;img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="27" width="104"&gt;&lt;/a&gt;
+<a href="https://www.buymeacoffee.com/akil3s1979" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="27" width="104"></a>
 
 ## Puedes invitarme a un café si quieres!
-&lt;a href="https://www.buymeacoffee.com/akil3s1979" target="_blank"&gt;&lt;img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="27" width="104"&gt;&lt;/a&gt;
+<a href="https://www.buymeacoffee.com/akil3s1979" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="27" width="104"></a>
