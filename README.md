@@ -161,6 +161,7 @@ hellFuzzer generates professional JSON reports compatible with Pwndoc for enterp
 **Output File:** `hellfuzzer_scan_target_YYYYMMDD_HHMMSS.json`
 
 **JSON Structure:**
+
 json
 {
   "name": "hellFuzzer Scan - http://target.com",
