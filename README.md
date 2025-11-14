@@ -126,6 +126,7 @@ hellFuzzer uses a clean, professional output format:
 ## New: Summary Table
 -----------------------------------------------------------
 SCAN SUMMARY
+
 -----------------------------------------------------------
 Total Requests: 4613
 Total Time: 28.69s
@@ -136,10 +137,15 @@ Status Codes:
 301: 6
 
 Interesting Finds:
+
 ADMIN: 2
+
 Word mining: 608 words discovered
+
 Auto-recursion: 142 paths discovered
+
 Auto-filter: 4733 responses filtered
+
 -----------------------------------------------------------
 
 ## JSON Export - Pwndoc-compatible format for professional reporting
