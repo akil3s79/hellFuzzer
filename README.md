@@ -137,7 +137,6 @@ Status Codes:
 
 Interesting Finds:
 ADMIN: 2
-
 Word mining: 608 words discovered
 Auto-recursion: 142 paths discovered
 Auto-filter: 4733 responses filtered
